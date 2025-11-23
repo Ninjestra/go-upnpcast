@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,7 +19,26 @@ type dmrSchema struct {
 		XMLName      xml.Name `xml:"device"`
 		FriendlyName string   `xml:"friendlyName"`
 		ModelName    string   `xml:"modelName"`
-		ServiceList  struct {
+		DeviceList   struct {
+			XMLName xml.Name `xml:"deviceList"`
+			Devices []struct {
+				XMLName      xml.Name `xml:"device"`
+				DeviceType   string   `xml:"deviceType"`
+				FriendlyName string   `xml:"friendlyName"`
+				ModelName    string   `xml:"modelName"`
+				ServiceList  struct {
+					XMLName  xml.Name `xml:"serviceList"`
+					Services []struct {
+						XMLName     xml.Name      `xml:"service"`
+						Type        services.Type `xml:"serviceType"`
+						ID          string        `xml:"serviceId"`
+						ControlURL  string        `xml:"controlURL"`
+						EventSubURL string        `xml:"eventSubURL"`
+					} `xml:"service"`
+				} `xml:"serviceList"`
+			} `xml:"device"`
+		} `xml:"deviceList"`
+		ServiceList struct {
 			XMLName  xml.Name `xml:"serviceList"`
 			Services []struct {
 				XMLName     xml.Name      `xml:"service"`
@@ -36,6 +56,8 @@ func mediaRendererFromDeviceURL(ctx context.Context, dmrurl string) (*MediaRende
 	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
 		return nil, fmt.Errorf("device URL parse error: %w", err)
 	}
+
+	log.Printf("fetching device manifest from %s", dmrurl)
 
 	client := &http.Client{}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dmrurl, nil)
@@ -61,9 +83,24 @@ func mediaRendererFromDeviceURL(ctx context.Context, dmrurl string) (*MediaRende
 		FriendlyName: root.Device.FriendlyName,
 		ModelName:    root.Device.ModelName,
 	}
-	for i := 0; i < len(root.Device.ServiceList.Services); i++ {
+
+	log.Printf("found device: %s (%s)", mr.FriendlyName, mr.ModelName)
+
+	var servicesAgnostic = root.Device.ServiceList.Services
+	if (len(servicesAgnostic) == 0) && (len(root.Device.DeviceList.Devices) > 0) {
+		// look for MediaRenderer device in sub-devices if services not found at top level
+		for i := 0; i < len(root.Device.DeviceList.Devices); i++ {
+			subDevice := root.Device.DeviceList.Devices[i]
+			if subDevice.DeviceType != "urn:schemas-upnp-org:device:MediaRenderer:1" {
+				continue
+			}
+			servicesAgnostic = subDevice.ServiceList.Services
+			break
+		}
+	}
+	for i := 0; i < len(servicesAgnostic); i++ {
 		// normalize service URLs to start with leading /
-		service := root.Device.ServiceList.Services[i]
+		service := servicesAgnostic[i]
 		if !strings.HasPrefix(service.EventSubURL, "/") {
 			service.EventSubURL = "/" + service.EventSubURL
 		}
