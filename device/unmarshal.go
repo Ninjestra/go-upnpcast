@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -57,8 +56,6 @@ func mediaRendererFromDeviceURL(ctx context.Context, dmrurl string) (*MediaRende
 		return nil, fmt.Errorf("device URL parse error: %w", err)
 	}
 
-	log.Printf("fetching device manifest from %s", dmrurl)
-
 	client := &http.Client{}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dmrurl, nil)
 	if err != nil {
@@ -84,14 +81,12 @@ func mediaRendererFromDeviceURL(ctx context.Context, dmrurl string) (*MediaRende
 		ModelName:    root.Device.ModelName,
 	}
 
-	log.Printf("found device: %s (%s)", mr.FriendlyName, mr.ModelName)
-
 	var servicesAgnostic = root.Device.ServiceList.Services
 	if (len(servicesAgnostic) == 0) && (len(root.Device.DeviceList.Devices) > 0) {
 		// look for MediaRenderer device in sub-devices if services not found at top level
 		for i := 0; i < len(root.Device.DeviceList.Devices); i++ {
 			subDevice := root.Device.DeviceList.Devices[i]
-			if subDevice.DeviceType != "urn:schemas-upnp-org:device:MediaRenderer:1" {
+			if subDevice.DeviceType != MediaRendererDeviceType {
 				continue
 			}
 			servicesAgnostic = subDevice.ServiceList.Services
