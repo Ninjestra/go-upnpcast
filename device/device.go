@@ -17,8 +17,6 @@ var (
 	ErrUnsupportedService = errors.New("the device does not support the requested service")
 )
 
-var MediaRendererDeviceType = "urn:schemas-upnp-org:device:MediaRenderer:1"
-
 // MediaRenderer represents a Digital Media Renderer (DMR) device discovered on the LAN
 type MediaRenderer struct {
 	// URL for the device's service descrption manifest

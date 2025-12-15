@@ -12,42 +12,34 @@ import (
 	"github.com/supersonic-app/go-upnpcast/services"
 )
 
+// Omit version suffix to match all versions
+var MediaRendererDeviceType = "urn:schemas-upnp-org:device:MediaRenderer:"
+
+type device struct {
+	XMLName      xml.Name `xml:"device"`
+	DeviceType   string   `xml:"deviceType"`
+	FriendlyName string   `xml:"friendlyName"`
+	ModelName    string   `xml:"modelName"`
+
+	ServiceList struct {
+		XMLName  xml.Name `xml:"serviceList"`
+		Services []struct {
+			XMLName     xml.Name      `xml:"service"`
+			Type        services.Type `xml:"serviceType"`
+			ID          string        `xml:"serviceId"`
+			ControlURL  string        `xml:"controlURL"`
+			EventSubURL string        `xml:"eventSubURL"`
+		} `xml:"service"`
+	} `xml:"serviceList"`
+
+	DeviceList struct {
+		Devices []device `xml:"device"`
+	} `xml:"deviceList"`
+}
+
 type dmrSchema struct {
 	XMLName xml.Name `xml:"root"`
-	Device  struct {
-		XMLName      xml.Name `xml:"device"`
-		FriendlyName string   `xml:"friendlyName"`
-		ModelName    string   `xml:"modelName"`
-		DeviceList   struct {
-			XMLName xml.Name `xml:"deviceList"`
-			Devices []struct {
-				XMLName      xml.Name `xml:"device"`
-				DeviceType   string   `xml:"deviceType"`
-				FriendlyName string   `xml:"friendlyName"`
-				ModelName    string   `xml:"modelName"`
-				ServiceList  struct {
-					XMLName  xml.Name `xml:"serviceList"`
-					Services []struct {
-						XMLName     xml.Name      `xml:"service"`
-						Type        services.Type `xml:"serviceType"`
-						ID          string        `xml:"serviceId"`
-						ControlURL  string        `xml:"controlURL"`
-						EventSubURL string        `xml:"eventSubURL"`
-					} `xml:"service"`
-				} `xml:"serviceList"`
-			} `xml:"device"`
-		} `xml:"deviceList"`
-		ServiceList struct {
-			XMLName  xml.Name `xml:"serviceList"`
-			Services []struct {
-				XMLName     xml.Name      `xml:"service"`
-				Type        services.Type `xml:"serviceType"`
-				ID          string        `xml:"serviceId"`
-				ControlURL  string        `xml:"controlURL"`
-				EventSubURL string        `xml:"eventSubURL"`
-			} `xml:"service"`
-		} `xml:"serviceList"`
-	} `xml:"device"`
+	Device  device   `xml:"device"`
 }
 
 func mediaRendererFromDeviceURL(ctx context.Context, dmrurl string) (*MediaRenderer, error) {
@@ -82,20 +74,28 @@ func mediaRendererFromDeviceURL(ctx context.Context, dmrurl string) (*MediaRende
 	}
 
 	var servicesAgnostic = root.Device.ServiceList.Services
+
 	if (len(servicesAgnostic) == 0) && (len(root.Device.DeviceList.Devices) > 0) {
+
 		// look for MediaRenderer device in sub-devices if services not found at top level
-		for i := 0; i < len(root.Device.DeviceList.Devices); i++ {
-			subDevice := root.Device.DeviceList.Devices[i]
-			if subDevice.DeviceType != MediaRendererDeviceType {
+		for _, subDevice := range root.Device.DeviceList.Devices {
+
+			if !strings.Contains(subDevice.DeviceType, MediaRendererDeviceType) {
 				continue
 			}
+
+			if len(subDevice.ServiceList.Services) == 0 {
+				continue
+			}
+
 			servicesAgnostic = subDevice.ServiceList.Services
 			break
 		}
 	}
 	for i := 0; i < len(servicesAgnostic); i++ {
-		// normalize service URLs to start with leading /
 		service := servicesAgnostic[i]
+
+		// normalize service URLs to start with leading /
 		if !strings.HasPrefix(service.EventSubURL, "/") {
 			service.EventSubURL = "/" + service.EventSubURL
 		}
